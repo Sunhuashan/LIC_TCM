@@ -129,3 +129,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 ./run.sh
+
+checkpoint/
+.gitignore

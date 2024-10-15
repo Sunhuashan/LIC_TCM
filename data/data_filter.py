@@ -1,7 +1,7 @@
 import os
 
 # Folder path (the folder containing the images to be checked and deleted)
-folder_path = '../data_test'
+folder_path = '/root/autodl-tmp/train'
 
 # Path to the train_list file (the file that contains the filenames to keep)
 train_list_file = './train_list.txt'

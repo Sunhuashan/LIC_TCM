@@ -14,7 +14,7 @@ from pytorch_msssim import ms_ssim
 from PIL import Image
 warnings.filterwarnings("ignore")
 
-print(torch.cuda.is_available())
+# print(torch.cuda.is_available())
 
 
 def compute_psnr(a, b):
