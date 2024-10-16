@@ -211,6 +211,7 @@ class WMSA(nn.Module):
         relation = cord[:, None, :] - cord[None, :, :] + self.window_size -1
         return self.relative_position_params[:, relation[:,:,0].long(), relation[:,:,1].long()]
 
+# SwinT block
 class Block(nn.Module):
     def __init__(self, input_dim, output_dim, head_dim, window_size, drop_path, type='W', input_resolution=None):
         """ SwinTransformer Block
@@ -231,6 +232,7 @@ class Block(nn.Module):
         )
 
     def forward(self, x):
+        # [B, H*, W*, N]
         x = x + self.drop_path(self.msa(self.ln1(x)))
         x = x + self.drop_path(self.mlp(self.ln2(x)))
         return x
@@ -254,8 +256,11 @@ class ConvTransBlock(nn.Module):
         self.conv_block = ResidualBlock(self.conv_dim, self.conv_dim)
 
     def forward(self, x):
+        # [B, 2*N, H/2, W/2] -> [B, N, H/2, W/2], [B, N, H/2, W/2]
         conv_x, trans_x = torch.split(self.conv1_1(x), (self.conv_dim, self.trans_dim), dim=1)
+        # conv path F_cnn
         conv_x = self.conv_block(conv_x) + conv_x
+        # transformer path F_trans
         trans_x = Rearrange('b c h w -> b h w c')(trans_x)
         trans_x = self.trans_block(trans_x)
         trans_x = Rearrange('b h w c -> b c h w')(trans_x)
@@ -320,12 +325,15 @@ class TCM(CompressionModel):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(config))]
         begin = 0
 
+        # [B, 2*N, H/2, W/2] -> [B, 2*N, H/4, W/4]
         self.m_down1 = [ConvTransBlock(dim, dim, self.head_dim[0], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW') 
                       for i in range(config[0])] + \
                       [ResidualBlockWithStride(2*N, 2*N, stride=2)]
+        # [B, 2*N, H/4, W/4] -> [B, 2*N, H/8, W/8]
         self.m_down2 = [ConvTransBlock(dim, dim, self.head_dim[1], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW')
                       for i in range(config[1])] + \
                       [ResidualBlockWithStride(2*N, 2*N, stride=2)]
+        # [B, 2*N, H/8, W/8] -> [B, M, H/16, W/16]
         self.m_down3 = [ConvTransBlock(dim, dim, self.head_dim[2], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW')
                       for i in range(config[2])] + \
                       [conv3x3(2*N, M, stride=2)]
@@ -340,6 +348,7 @@ class TCM(CompressionModel):
                       for i in range(config[5])] + \
                       [subpel_conv3x3(2*N, 3, 2)]
         
+        # [B, 3, H, W] -> [B, 3*N, H/2, W/2]
         self.g_a = nn.Sequential(*[ResidualBlockWithStride(3, 2*N, 2)] + self.m_down1 + self.m_down2 + self.m_down3)
         
 
