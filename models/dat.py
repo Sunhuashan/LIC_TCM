@@ -625,20 +625,18 @@ class ResidualGroup(nn.Module):
             b_idx = i,
             )for i in range(depth)])
 
-        if resi_connection == '1conv':
-            self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
-        elif resi_connection == '3conv':
-            self.conv = nn.Sequential(
-                nn.Conv2d(dim, dim // 4, 3, 1, 1), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                nn.Conv2d(dim // 4, dim // 4, 1, 1, 0), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                nn.Conv2d(dim // 4, dim, 3, 1, 1))
+        self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
 
-    def forward(self, x, x_size):
+    def forward(self, x):
         """
         Input: x: (B, H*W, C), x_size: (H, W)
         Output: x: (B, H*W, C)
         """
-        H, W = x_size
+        B, C, H, W = x.shape
+        x_size = [H, W]
+        x = rearrange(x, "b c h w -> b (h w) c")
+
+        # original code
         res = x
         for blk in self.blocks:
             if self.use_chk:
@@ -650,4 +648,5 @@ class ResidualGroup(nn.Module):
         x = rearrange(x, "b c h w -> b (h w) c")
         x = res + x
 
+        x = rearrange(x, "b (h w) c -> b c h w", h=H, w=W).contiguous()
         return x

@@ -135,7 +135,7 @@ def train_one_epoch(
         aux_loss.backward()
         aux_optimizer.step()
 
-        if i % 1000 == 0:
+        if i % 500 == 0:
             if type == 'mse':
                 print(
                     f"Train epoch {epoch}: ["
@@ -169,6 +169,7 @@ def test_epoch(epoch, test_dataloader, model, criterion, type='mse'):
 
         with torch.no_grad():
             for d in test_dataloader:
+                print(f"Image size: {d.shape}")  # 打印图片的尺寸
                 d = d.to(device)
                 out_net = model(d)
                 out_criterion = criterion(out_net, d)
@@ -263,12 +264,12 @@ def parse_args(argv):
         help="Bit-rate distortion parameter (default: %(default)s)",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=8, help="Batch size (default: %(default)s)"
+        "--batch-size", type=int, default=4, help="Batch size (default: %(default)s)"
     )
     parser.add_argument(
         "--test-batch-size",
         type=int,
-        default=8,
+        default=4,
         help="Test batch size (default: %(default)s)",
     )
     parser.add_argument(

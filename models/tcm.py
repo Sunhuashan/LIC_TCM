@@ -22,6 +22,7 @@ from timm.models.layers import trunc_normal_, DropPath
 import numpy as np
 import math
 
+from .dat import ResidualGroup
 
 SCALES_MIN = 0.11
 SCALES_MAX = 256
@@ -326,7 +327,7 @@ class TCM(CompressionModel):
         begin = 0
 
         self.RG = ResidualGroup(
-                dim=180,
+                dim=256,
                 num_heads=2,
                 reso=64,
                 split_size=[2,4],
@@ -335,7 +336,7 @@ class TCM(CompressionModel):
                 qk_scale=None,
                 drop=0,
                 attn_drop=0,
-                drop_paths=None,
+                drop_paths=dpr,
                 act_layer=nn.GELU,
                 norm_layer=nn.LayerNorm,
                 depth=2,
@@ -347,34 +348,34 @@ class TCM(CompressionModel):
         # self.m_down1 = [ConvTransBlock(dim, dim, self.head_dim[0], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW') 
         #               for i in range(config[0])] + \
         #               [ResidualBlockWithStride(2*N, 2*N, stride=2)]
-        self.m_down1 = self.RG + ResidualBlockWithStride(2*N, 2*N, stride=2)
+        self.m_down1 = [self.RG] + [ResidualBlockWithStride(2*N, 2*N, stride=2)]
 
         # [B, 2*N, H/4, W/4] -> [B, 2*N, H/8, W/8]
         # self.m_down2 = [ConvTransBlock(dim, dim, self.head_dim[1], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW')
                     #   for i in range(config[1])] + \
                     #   [ResidualBlockWithStride(2*N, 2*N, stride=2)]
-        self.m_down2 = self.RG + ResidualBlockWithStride(2*N, 2*N, stride=2)
+        self.m_down2 = [self.RG] + [ResidualBlockWithStride(2*N, 2*N, stride=2)]
 
         # [B, 2*N, H/8, W/8] -> [B, M, H/16, W/16]
         # self.m_down3 = [ConvTransBlock(dim, dim, self.head_dim[2], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW')
         #               for i in range(config[2])] + \
         #               [conv3x3(2*N, M, stride=2)]
-        self.m_down3 = self.RG + ResidualBlockWithStride(2*N, M, stride=2)
+        self.m_down3 = [self.RG] + [conv3x3(2*N, M, stride=2)]
 
         # self.m_up1 = [ConvTransBlock(dim, dim, self.head_dim[3], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW') 
         #               for i in range(config[3])] + \
         #               [ResidualBlockUpsample(2*N, 2*N, 2)]
-        self.m_up1 = self.RG + [ResidualBlockUpsample(2*N, 2*N, 2)]
+        self.m_up1 = [self.RG] + [ResidualBlockUpsample(2*N, 2*N, 2)]
 
         # self.m_up2 = [ConvTransBlock(dim, dim, self.head_dim[4], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW') 
         #               for i in range(config[4])] + \
         #               [ResidualBlockUpsample(2*N, 2*N, 2)]
-        self.m_up2 = self.RG + [ResidualBlockUpsample(2*N, 2*N, 2)]
+        self.m_up2 = [self.RG] + [ResidualBlockUpsample(2*N, 2*N, 2)]
 
         # self.m_up3 = [ConvTransBlock(dim, dim, self.head_dim[5], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW') 
         #               for i in range(config[5])] + \
         #               [subpel_conv3x3(2*N, 3, 2)]
-        self.m_up3 = self.RG + [ResidualBlockUpsample(2*N, 3, 2)]
+        self.m_up3 = [self.RG] + [subpel_conv3x3(2*N, 3, 2)]
         
         # [B, 3, H, W] -> [B, 3*N, H/2, W/2]
         self.g_a = nn.Sequential(*[ResidualBlockWithStride(3, 2*N, 2)] + self.m_down1 + self.m_down2 + self.m_down3)
@@ -461,7 +462,9 @@ class TCM(CompressionModel):
         return updated
     
     def forward(self, x):
+        # [8, 3, H, W] -> [8, 320, H/16, W/16]
         y = self.g_a(x)
+
         y_shape = y.shape[2:]
         z = self.h_a(y)
         _, z_likelihoods = self.entropy_bottleneck(z)
